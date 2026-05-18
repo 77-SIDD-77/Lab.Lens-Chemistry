@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab.Lens — Virtual Chemistry Lab</title>
+  <link rel="icon" type="image/png" href="material/logo.png" />
+  <meta name="description"
+    content="Lab.Lens: Interactive virtual chemistry lab for pH-metric, conductometric, and potentiometric titration experiments." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      },
+      svg: {
+        fontCache: 'global'
+      }
+    };
+  </script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+
+<body>
+
+  <!-- LIGHTBOX MODAL -->
+  <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+    <button class="lightbox-nav lightbox-prev" onclick="event.stopPropagation(); lightboxNav(-1)">&#8249;</button>
+    <div class="lightbox-content" onclick="event.stopPropagation()">
+      <img id="lightbox-img" src="" alt="Reference material" />
+    </div>
+    <button class="lightbox-nav lightbox-next" onclick="event.stopPropagation(); lightboxNav(1)">&#8250;</button>
+    <div class="lightbox-counter" id="lightbox-counter"></div>
+  </div>
+
+  <!-- MODE SELECTION MODAL -->
+  <div id="mode-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content mode-modal">
+      <h2>Choose Visualization Mode</h2>
+      <p class="modal-subtitle">How would you like to proceed?</p>
+      <div class="mode-buttons">
+        <button class="mode-btn default-mode" onclick="selectDefaultMode()">
+          <div class="mode-icon">📊</div>
+          <div class="mode-title">Default Visualization</div>
+          <div class="mode-desc">Use pre-loaded data</div>
+        </button>
+        <button class="mode-btn custom-mode" onclick="openCustomObsForm()">
+          <div class="mode-icon">✏️</div>
+          <div class="mode-title">Enter Custom Data</div>
+          <div class="mode-desc">Input your observations</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CUSTOM OBSERVATIONS MODAL -->
+  <div id="custom-obs-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content custom-obs-modal">
+      <button class="modal-close-btn" onclick="closeCustomObsForm()">✕</button>
+      <h2>Enter Your Observations</h2>
+
+      <div class="form-step" id="step-count">
+        <div class="step-header">
+          <span class="step-number">Step 1</span>
+          <span class="step-title">How many observations did you make?</span>
+        </div>
+        <div class="obs-input-group">
+          <input type="number" id="obs-count-input" min="2" max="50" value="5"
+            placeholder="Enter number of observations">
+          <button class="btn-primary" onclick="proceedToDataEntry()">Next →</button>
+        </div>
+      </div>
+
+      <div class="form-step" id="step-data" style="display:none;">
+        <div class="step-header">
+          <span class="step-number">Step 2</span>
+          <span class="step-title">Enter Your Data Points</span>
+          <span class="step-subtitle">X: <span id="data-x-label">Volume (ml)</span> | Y: <span
+              id="data-y-label">Reading</span></span>
+        </div>
+        <div class="data-input-container">
+          <div class="data-inputs" id="data-inputs"></div>
+        </div>
+        <div class="data-actions">
+          <button class="btn-secondary" onclick="backToCountStep()">← Back</button>
+          <button class="btn-primary" onclick="submitCustomData()">Visualize Graph →</button>
+        </div>
+      </div>
+
+      <div class="form-step" id="step-confirm" style="display:none;">
+        <div class="step-header">
+          <span class="step-number">Step 3</span>
+          <span class="step-title">Data Summary</span>
+        </div>
+        <div class="data-summary" id="data-summary"></div>
+        <div class="data-actions">
+          <button class="btn-secondary" onclick="backToDataStep()">← Edit</button>
+          <button class="btn-primary" onclick="confirmCustomData()">Visualize ✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header id="app-header">
+    <div class="header-left">
+      <button id="hamburger" class="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="header-brand">
+        <img src="material/logo.png" alt="Lab.Lens" class="header-logo-img" />
+      </div>
+    </div>
+    <input type="text" id="search" placeholder="Search experiment…" autocomplete="off" />
+  </header>
+
+  <!-- LAYOUT -->
+  <div class="layout">
+
+    <!-- SIDEBAR OVERLAY (mobile) -->
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar">
+      <p class="sidebar-label">EXPERIMENTS</p>
+      <div id="exp-list"></div>
+    </aside>
+
+    <!-- MAIN PANEL -->
+    <main id="main-panel">
+
+      <!-- WELCOME SCREEN -->
+      <div id="welcome-screen">
+
+        <!-- LEFT: Logo image -->
+        <div class="welcome-image-panel">
+          <img src="material/logo.png" alt="Lab.Lens Logo" />
+        </div>
+
+        <!-- RIGHT: Text -->
+        <div class="welcome-inner">
+          <div class="welcome-tagline">🔬 Virtual Chemistry Lab</div>
+          <div class="welcome-logo">LAB<span>.LENS</span></div>
+          <p>An interactive simulation platform for pH-metric, conductometric, and potentiometric titration experiments. Select an experiment from the sidebar to begin.</p>
+          <div class="welcome-chips">
+            <span>🧪 pH-Metric Titration</span>
+            <span>⚡ Conductometric Titration</span>
+            <span>⚗️ Potentiometric Titration</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- EXPERIMENT PANEL -->
+      <div id="exp-panel" style="display:none;">
+
+        <!-- EXPERIMENT TITLE BAR -->
+        <div class="exp-title-bar">
+          <h1 id="exp-name"></h1>
+          <span id="exp-category-badge"></span>
+        </div>
+
+        <!-- TABS -->
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="info">📋 Info</button>
+          <button class="tab-btn" data-tab="perform">🧪 Perform</button>
+          <button class="tab-btn" data-tab="graph">📈 Graph</button>
+          <button class="tab-btn" data-tab="formulas">🧮 Formulas</button>
+        </div>
+
+        <!-- TAB: INFO -->
+        <div id="tab-content-info" class="tab-content active">
+          <div class="info-grid">
+            <div class="info-card">
+              <h3>🎯 Aim</h3>
+              <p id="info-aim"></p>
+            </div>
+            <div class="info-card">
+              <h3>⚗️ Chemicals</h3>
+              <p id="info-chemicals"></p>
+            </div>
+            <div class="info-card">
+              <h3>🔬 Apparatus</h3>
+              <p id="info-apparatus"></p>
+            </div>
+            <div class="info-card full-width">
+              <h3>📝 Procedure</h3>
+              <ol id="info-procedure"></ol>
+            </div>
+          </div>
+          <div class="material-section">
+            <h3>📖 Reference Material</h3>
+            <div id="material-images" class="material-images"></div>
+          </div>
+        </div>
+
+        <!-- TAB: FORMULAS -->
+        <div id="tab-content-formulas" class="tab-content">
+          <!-- Calculation panel moved here -->
+          <div id="calc-panel" class="calc-panel" style="display:none; max-width: 850px; margin: 0 auto 20px auto;"></div>
+          
+          <div class="formulas-container" id="formulas-content" style="max-width: 800px; margin: 0 auto; padding: 20px;">
+            <!-- Populated dynamically by JavaScript -->
+          </div>
+        </div>
+
+        <!-- TAB: PERFORM -->
+        <div id="tab-content-perform" class="tab-content">
+
+          <!-- Custom Mode Banner -->
+          <div id="custom-mode-banner" class="custom-mode-banner" style="display:none;">
+            <span>✏️ <strong>Custom Observations Mode</strong> — Showing your entered data</span>
+            <button onclick="switchToDefaultMode()" class="use-default-btn">↩ Use Default Data</button>
+          </div>
+
+          <div class="perform-layout">
+
+            <!-- LEFT: Controls -->
+            <div class="control-panel">
+
+              <!-- Animated Beaker + Burette -->
+              <div class="beaker-scene" id="beaker-scene">
+                <div class="burette-container">
+                  <div class="burette-tube" id="burette-tube">
+                    <div class="burette-fill" id="burette-fill"></div>
+                  </div>
+                  <div class="burette-tip" id="burette-tip"></div>
+                  <div id="drop-zone"></div>
+                </div>
+                <div class="beaker-container">
+                  <svg class="beaker-svg" viewBox="0 0 120 130" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                      <clipPath id="beakerClip">
+                        <polygon points="10,10 110,10 100,120 20,120" />
+                      </clipPath>
+                    </defs>
+                    <!-- liquid fill animated -->
+                    <rect id="beaker-liquid-rect" x="10" y="90" width="100" height="30" clip-path="url(#beakerClip)"
+                      fill="#a8d8ea" opacity="0.75" />
+                    <!-- beaker outline -->
+                    <polygon points="10,10 110,10 100,120 20,120" fill="none" stroke="#94a3b8" stroke-width="2.5"
+                      stroke-linejoin="round" />
+                    <!-- spout left -->
+                    <line x1="10" y1="10" x2="2" y2="2" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" />
+                    <!-- tick marks -->
+                    <line x1="20" y1="40" x2="28" y2="40" stroke="#cbd5e1" stroke-width="1" />
+                    <line x1="21" y1="60" x2="30" y2="60" stroke="#cbd5e1" stroke-width="1" />
+                    <line x1="22" y1="80" x2="31" y2="80" stroke="#cbd5e1" stroke-width="1" />
+                  </svg>
+                  <div class="beaker-reading" id="beaker-reading">—</div>
+                </div>
+              </div>
+
+              <div class="beaker-info-row">
+                <div class="beaker-info">
+                  <div class="beaker-icon">🧫</div>
+                  <div>
+                    <div class="beaker-label">Beaker</div>
+                    <div id="perform-acid" class="beaker-value"></div>
+                  </div>
+                </div>
+                <div class="beaker-info">
+                  <div class="beaker-icon">🧪</div>
+                  <div>
+                    <div class="beaker-label">Burette</div>
+                    <div id="perform-titrant" class="beaker-value"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="add-titrant-section">
+                <label for="vol-select">Volume to Add</label>
+                <select id="vol-select">
+                  <option value="0.5">0.5 ml</option>
+                  <option value="1" selected>1 ml</option>
+                  <option value="2">2 ml</option>
+                  <option value="3">3 ml</option>
+                  <option value="5">5 ml</option>
+                </select>
+                <button id="btn-add" onclick="addTitrant()">Add Titrant ➕</button>
+                <button id="btn-reset" onclick="resetSimulation()">Reset 🔄</button>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="status-box">
+                <div class="status-row">
+                  <span>Total Added:</span>
+                  <strong id="status-volume">0 ml</strong>
+                </div>
+                <div class="status-row">
+                  <span id="status-y-label">Reading:</span>
+                  <strong id="status-value">—</strong>
+                </div>
+                <div class="status-row" id="status-rate-row" style="display:none;">
+                  <span>Rate (ΔY/ΔV):</span>
+                  <strong id="status-rate">—</strong>
+                </div>
+                <div id="status-endpoint" class="endpoint-badge" style="display:none;">⚠️ Near Equivalence Point!</div>
+              </div>
+
+              <div class="export-row">
+                <button class="export-btn" onclick="exportCSV()">⬇ CSV</button>
+                <button class="export-btn" onclick="exportGraphPNG()">⬇ Graph PNG</button>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="custom-obs-trigger">
+                <button class="custom-obs-btn" onclick="openCustomObsForm()" title="Enter your own lab observations to visualize">
+                  ✏️ Enter My Observations
+                </button>
+                <p class="custom-obs-hint">Have real lab data? Input your readings to plot your own graph.</p>
+              </div>
+            </div>
+
+            <!-- RIGHT: Mini live graph + Observation Table -->
+            <div class="obs-and-graph-col">
+              <div class="mini-graph-panel" id="mini-graph-panel" style="display:none;">
+                <div class="mini-graph-label" id="mini-graph-label">Live Graph</div>
+                <div class="mini-chart-wrap">
+                  <canvas id="miniChart"></canvas>
+                </div>
+              </div>
+
+              <div class="obs-panel">
+                <h3>Observation Table</h3>
+                <div class="table-wrap">
+                  <table id="obs-table">
+                    <thead>
+                      <tr>
+                        <th>Sr.</th>
+                        <th id="obs-col-x">Volume Added (ml)</th>
+                        <th id="obs-col-y">Reading</th>
+                      </tr>
+                    </thead>
+                    <tbody id="obs-body">
+                      <tr id="obs-empty-row">
+                        <td colspan="3" class="empty-row">No readings yet. Add titrant to start.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <button id="btn-plot" onclick="switchToGraph()" class="plot-btn" style="display:none;">📈 View Full
+                  Graph</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- TAB: GRAPH -->
+        <div id="tab-content-graph" class="tab-content">
+          <div class="graph-wrapper">
+            <div class="graph-header">
+              <span id="graph-title-text"></span>
+              <div class="graph-actions">
+                <button id="btn-derivative" onclick="toggleDerivativeGraph()" class="derivative-btn"
+                  style="display:none;">📊 ΔE/ΔV Curve</button>
+                <button id="btn-sd2" onclick="toggleSD2Graph()" class="derivative-btn"
+                  style="display:none;">📉 d²E/dV²</button>
+                <button onclick="resetZoom()" class="derivative-btn" id="btn-reset-zoom" style="display:none;">🔍 Reset Zoom</button>
+                <button onclick="printReport()" class="custom-obs-graph-btn">🖨️ Print</button>
+                <button onclick="openCustomObsForm()" class="custom-obs-graph-btn">✏️ My Data</button>
+                <button onclick="switchToPerform()" class="back-btn">← Back to Perform</button>
+              </div>
+            </div>
+
+
+            <div class="chart-container" id="main-chart-container">
+              <canvas id="mainChart"></canvas>
+            </div>
+            <div class="chart-container" id="deriv-chart-container" style="display:none; margin-top:12px;">
+              <canvas id="derivChart"></canvas>
+            </div>
+            <div class="chart-container" id="sd2-chart-container" style="display:none; margin-top:12px;">
+              <canvas id="sd2Chart"></canvas>
+            </div>
+
+            <div id="graph-no-data" class="graph-no-data">
+              No data yet — switch to <strong>Perform</strong> tab and add titrant first.
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /exp-panel -->
+    </main>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script src="js/graph.js"></script>
+</body>
+
+</html>
